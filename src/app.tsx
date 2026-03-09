@@ -227,7 +227,7 @@ function Chat() {
           if (data.type === "scheduled-task") {
             toasts.add({
               title: "Scheduled task completed",
-              description: data.description,
+              description: data.notificationMessage,
               timeout: 0
             });
           }
@@ -552,10 +552,10 @@ function Chat() {
               contents={
                 <div className="flex flex-wrap justify-center gap-2">
                   {[
-                    "What's the weather in Paris?",
-                    "What timezone am I in?",
-                    "Calculate 5000 * 3",
-                    "Remind me in 5 minutes to take a break"
+                    "Summarize the process of photosynthesis",
+                    "Generate a 3-question quiz on World War II",
+                    "Explain quantum physics to a 5th grader",
+                    "Remind me to study math in 30 minutes"
                   ].map((prompt) => (
                     <Button
                       key={prompt}

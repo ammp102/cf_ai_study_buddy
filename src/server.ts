@@ -10,8 +10,15 @@ import {
   stepCountIs
 } from "ai";
 import { z } from "zod";
+export { FlashcardDO  } from "./flashcard";
+export { QuizDO } from "./quiz";
+import { convertAsyncIteratorToReadableStream } from "ai/internal";
 
-export class ChatAgent extends AIChatAgent<Env> {
+interface IState {
+  name?: string
+}
+
+export class ChatAgent extends AIChatAgent<Env, IState> {
   // Wait for MCP connections to restore after hibernation before processing messages
   waitForMcpConnections = true;
 
@@ -31,6 +38,7 @@ export class ChatAgent extends AIChatAgent<Env> {
         );
       }
     });
+
   }
 
   @callable()
@@ -43,17 +51,32 @@ export class ChatAgent extends AIChatAgent<Env> {
     await this.removeMcpServer(serverId);
   }
 
+  getName() {
+    return this.state?.name || this.name;
+  }
+
+  updateName() {
+    if (!this.state?.name && this.name) {
+      this.setState({ ...this.state, name: this.name });
+    }
+  }
+
+  
   async onChatMessage(_onFinish: unknown, options?: OnChatMessageOptions) {
     const mcpTools = this.mcp.getAITools();
     const workersai = createWorkersAI({ binding: this.env.AI });
 
+    this.updateName()
+
     const result = streamText({
       model: workersai("@cf/zai-org/glm-4.7-flash"),
-      system: `You are a helpful assistant. You can check the weather, get the user's timezone, run calculations, and schedule tasks.
+      system: `You are a study assistant. Your goal is to summarize content, generate quiz questions and flashcards, and set reminders to stop or start studying.
+      IMPORTANT: only use tools if the user requests to schedule a message or handling quizes.
 
-${getSchedulePrompt({ date: new Date() })}
+      ${getSchedulePrompt({ date: new Date() })}
 
-If the user asks to schedule a task, use the schedule tool to schedule the task.`,
+      If the user asks to schedule a task, use the schedule tool to schedule the task.`,
+
       // Prune old tool calls to save tokens on long conversations
       messages: pruneMessages({
         messages: await convertToModelMessages(this.messages),
@@ -63,63 +86,30 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
         // MCP tools from connected servers
         ...mcpTools,
 
-        // Server-side tool: runs automatically on the server
-        getWeather: tool({
-          description: "Get the current weather for a city",
+        saveFlashcard: tool({
+          description: "Save a term and definition as a flashcard for the user.",
           inputSchema: z.object({
-            city: z.string().describe("City name")
+            term: z.string().describe("The concept or word to remember"),
+            definition: z.string().describe("The definition of the term")
           }),
-          execute: async ({ city }) => {
-            // Replace with a real weather API in production
-            const conditions = ["sunny", "cloudy", "rainy", "snowy"];
-            const temp = Math.floor(Math.random() * 30) + 5;
+          execute: async ({ term, definition }) => {
+            // 1. Get a reference to the Durable Object namespace
+            const id = this.env.FLASHCARD_DO.idFromName(this.name);
+            const ns = this.env.FLASHCARD_DO.get(id);
+
+            const flashcard = await ns.addFlashcard(term, definition);
+
+            console.log(flashcard);
+          
             return {
-              city,
-              temperature: temp,
-              condition:
-                conditions[Math.floor(Math.random() * conditions.length)],
-              unit: "celsius"
+              success: true,
+              message: `Flashcard for '${term}' saved successfully (ID: ${flashcard.id}).`
             };
           }
         }),
 
-        // Client-side tool: no execute function — the browser handles it
-        getUserTimezone: tool({
-          description:
-            "Get the user's timezone from their browser. Use this when you need to know the user's local time.",
-          inputSchema: z.object({})
-        }),
+        
 
-        // Approval tool: requires user confirmation before executing
-        calculate: tool({
-          description:
-            "Perform a math calculation with two numbers. Requires user approval for large numbers.",
-          inputSchema: z.object({
-            a: z.number().describe("First number"),
-            b: z.number().describe("Second number"),
-            operator: z
-              .enum(["+", "-", "*", "/", "%"])
-              .describe("Arithmetic operator")
-          }),
-          needsApproval: async ({ a, b }) =>
-            Math.abs(a) > 1000 || Math.abs(b) > 1000,
-          execute: async ({ a, b, operator }) => {
-            const ops: Record<string, (x: number, y: number) => number> = {
-              "+": (x, y) => x + y,
-              "-": (x, y) => x - y,
-              "*": (x, y) => x * y,
-              "/": (x, y) => x / y,
-              "%": (x, y) => x % y
-            };
-            if (operator === "/" && b === 0) {
-              return { error: "Division by zero" };
-            }
-            return {
-              expression: `${a} ${operator} ${b}`,
-              result: ops[operator](a, b)
-            };
-          }
-        }),
 
         scheduleTask: tool({
           description:
@@ -182,19 +172,33 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
     // Do the actual work here (send email, call API, etc.)
     console.log(`Executing scheduled task: ${description}`);
 
-    // Notify connected clients via a broadcast event.
-    // We use broadcast() instead of saveMessages() to avoid injecting
-    // into chat history — that would cause the AI to see the notification
-    // as new context and potentially loop.
+    // Determine the custom message based on description keywords
+  let notificationMessage: string;
+  const lowerDesc = description.toLowerCase();
+  if (lowerDesc.includes('break') || lowerDesc.includes('rest')) {
+    notificationMessage = "It's time to take a break, maybe stretch your legs and drink some water? 🏆";
+  } else if (lowerDesc.includes('study') || lowerDesc.includes('work') || lowerDesc.includes('learn')) {
+    notificationMessage = "It's time to get working! I can help you if you have questions! 📚";
+  } else {
+    notificationMessage = `⏰ Reminder: ${description}`;
+  }
+
+  
+  // Broadcast with custom message
     this.broadcast(
       JSON.stringify({
         type: "scheduled-task",
-        description,
+        notificationMessage,
         timestamp: new Date().toISOString()
       })
     );
   }
+
+
+
 }
+
+
 
 export default {
   async fetch(request: Request, env: Env) {

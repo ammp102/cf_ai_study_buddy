@@ -27,17 +27,34 @@
 			{
 				"class_name": "ChatAgent",
 				"name": "ChatAgent"
-			}
+			},
+			{
+      		  "class_name": "FlashcardDO",
+      		  "name": "FLASHCARD_DO"          
+      		},
+			{
+      		  "class_name": "QuizDO",
+      		  "name": "QUIZ_DO"          
+      		}
 		]
 	},
+	
 	"migrations": [
 		{
 			"new_sqlite_classes": [
 				"ChatAgent"
 			],
-			"tag": "v1"
-		}
+			"tag": "v1",
+		},
+		{
+  		  "new_sqlite_classes": [
+			"FlashcardDO", 
+			"QuizDO"
+			],
+  		  	"tag": "v2"
+  		}
 	],
+
 	"observability": {
 		"enabled": true
 	}
