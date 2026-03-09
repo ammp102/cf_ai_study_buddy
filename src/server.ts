@@ -12,7 +12,7 @@ import {
 import { z } from "zod";
 export { FlashcardDO  } from "./flashcard";
 export { QuizDO } from "./quiz";
-import { convertAsyncIteratorToReadableStream } from "ai/internal";
+//import { convertAsyncIteratorToReadableStream } from "ai/internal";
 
 interface IState {
   name?: string
@@ -202,6 +202,29 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
 
 export default {
   async fetch(request: Request, env: Env) {
+    const url = new URL(request.url);
+
+    // ── Flashcard REST API ──────────────────────────────────────────────
+    // Routes: GET /api/flashcards?agent=<name>
+    //         DELETE /api/flashcards?agent=<name>&id=<cardId>
+    if (url.pathname === "/api/flashcards") {
+      const cors = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
+      const agentName = url.searchParams.get("agent") ?? "default";
+      const id = env.FLASHCARD_DO.idFromName(agentName);
+      const stub = env.FLASHCARD_DO.get(id);
+
+      if (request.method === "DELETE") {
+        const cardId = url.searchParams.get("id");
+        if (!cardId) return new Response(JSON.stringify({ error: "Missing id" }), { status: 400, headers: cors });
+        await stub.deleteFlashcard(cardId);
+        return new Response(JSON.stringify({ success: true }), { headers: cors });
+      }
+
+      // GET — list all flashcards
+      const flashcards = await stub.getFlashcards();
+      return new Response(JSON.stringify(flashcards), { headers: cors });
+    }
+
     return (
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })

@@ -33,7 +33,10 @@ import {
   PlusIcon,
   SignInIcon,
   XIcon,
-  WrenchIcon
+  WrenchIcon,
+  CardsIcon,
+  ArrowsClockwiseIcon,
+  ListChecksIcon
 } from "@phosphor-icons/react";
 
 // ── Small components ──────────────────────────────────────────────────
@@ -188,6 +191,189 @@ function ToolPartView({
   return null;
 }
 
+// ── Flashcard types ───────────────────────────────────────────────────
+
+interface Flashcard {
+  id: string;
+  term: string;
+  definition: string;
+  createdAt: number;
+}
+
+// ── Study Sidebar ─────────────────────────────────────────────────────
+
+function StudySidebar({
+  agentName,
+  refreshTrigger
+}: {
+  agentName: string;
+  refreshTrigger: number;
+}) {
+  const [activeTab, setActiveTab] = useState<"flashcards" | "quiz">("flashcards");
+  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [flipped, setFlipped] = useState<Record<string, boolean>>({});
+
+  const fetchFlashcards = useCallback(async () => {
+    if (!agentName) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/flashcards?agent=${encodeURIComponent(agentName)}`);
+      if (res.ok) {
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text) as Flashcard[];
+          setFlashcards(data);
+        } catch {
+          console.error("Failed to parse flashcards JSON:", text.slice(0, 200));
+        }
+      } else {
+        console.error("Flashcards fetch failed:", res.status, await res.text());
+      }
+    } catch (e) {
+      console.error("Failed to fetch flashcards", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [agentName]);
+
+  useEffect(() => {
+    fetchFlashcards();
+  }, [fetchFlashcards, refreshTrigger]);
+
+  const deleteFlashcard = async (id: string) => {
+    try {
+      await fetch(`/api/flashcards?agent=${encodeURIComponent(agentName)}&id=${id}`, {
+        method: "DELETE"
+      });
+      setFlashcards((prev) => prev.filter((c) => c.id !== id));
+    } catch (e) {
+      console.error("Failed to delete flashcard", e);
+    }
+  };
+
+  const toggleFlip = (id: string) => {
+    setFlipped((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-kumo-base border-l border-kumo-line w-80 shrink-0">
+      {/* Sidebar header */}
+      <div className="px-4 py-3 border-b border-kumo-line">
+        <div className="flex items-center justify-between mb-3">
+          <Text size="sm" bold>Study Materials</Text>
+          <Button
+            variant="ghost"
+            size="sm"
+            shape="square"
+            icon={<ArrowsClockwiseIcon size={14} className={loading ? "animate-spin" : ""} />}
+            onClick={fetchFlashcards}
+            aria-label="Refresh"
+          />
+        </div>
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 rounded-lg bg-kumo-elevated">
+          <button
+            onClick={() => setActiveTab("flashcards")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-medium transition-colors ${
+              activeTab === "flashcards"
+                ? "bg-kumo-base text-kumo-default shadow-sm"
+                : "text-kumo-inactive hover:text-kumo-subtle"
+            }`}
+          >
+            <CardsIcon size={13} />
+            Cards
+            {flashcards.length > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-kumo-brand/10 text-kumo-brand text-[10px] leading-none font-semibold">
+                {flashcards.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("quiz")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-medium transition-colors ${
+              activeTab === "quiz"
+                ? "bg-kumo-base text-kumo-default shadow-sm"
+                : "text-kumo-inactive hover:text-kumo-subtle"
+            }`}
+          >
+            <ListChecksIcon size={13} />
+            Quiz
+          </button>
+        </div>
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === "flashcards" && (
+          <div className="p-3 space-y-2">
+            {loading && flashcards.length === 0 && (
+              <div className="flex items-center justify-center py-8 text-kumo-inactive">
+                <ArrowsClockwiseIcon size={16} className="animate-spin mr-2" />
+                <Text size="xs" variant="secondary">Loading...</Text>
+              </div>
+            )}
+            {!loading && flashcards.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-10 px-4 text-center gap-3">
+                <CardsIcon size={28} className="text-kumo-inactive" />
+                <Text size="xs" variant="secondary">
+                  No flashcards yet. Ask the assistant to save a term as a flashcard!
+                </Text>
+              </div>
+            )}
+            {flashcards.map((card) => (
+              <div
+                key={card.id}
+                className="group relative rounded-xl border border-kumo-line bg-kumo-base overflow-hidden cursor-pointer hover:border-kumo-accent transition-colors"
+                onClick={() => toggleFlip(card.id)}
+              >
+                <button
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-kumo-elevated text-kumo-inactive hover:text-kumo-danger z-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteFlashcard(card.id);
+                  }}
+                  aria-label="Delete flashcard"
+                >
+                  <TrashIcon size={12} />
+                </button>
+
+                <div className="px-3 py-2.5">
+                  {!flipped[card.id] ? (
+                    <>
+                      <span className="block text-xs text-kumo-subtle uppercase tracking-wide font-semibold mb-1">Term</span>
+                      <Text size="sm" bold>{card.term}</Text>
+                      <span className="block text-xs text-kumo-subtle mt-1.5">Tap to reveal definition</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="block text-xs text-kumo-subtle uppercase tracking-wide font-semibold mb-1">Definition</span>
+                      <Text size="sm">{card.definition}</Text>
+                      <span className="block text-xs text-kumo-brand mt-1.5">{card.term}</span>
+                    </>
+                  )}
+                </div>
+
+                <div className={`h-0.5 w-full transition-colors ${flipped[card.id] ? "bg-kumo-success" : "bg-kumo-brand/30"}`} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === "quiz" && (
+          <div className="flex flex-col items-center justify-center py-10 px-4 text-center gap-3">
+            <ListChecksIcon size={28} className="text-kumo-inactive" />
+            <Text size="sm" bold>Quizzes coming soon</Text>
+            <Text size="xs" variant="secondary">
+              Ask the assistant to generate a quiz and it will appear here.
+            </Text>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main chat ─────────────────────────────────────────────────────────
 
 function Chat() {
@@ -208,6 +394,15 @@ function Chat() {
   const [mcpUrl, setMcpUrl] = useState("");
   const [isAddingServer, setIsAddingServer] = useState(false);
   const mcpPanelRef = useRef<HTMLDivElement>(null);
+  const [flashcardRefreshTrigger, setFlashcardRefreshTrigger] = useState(0);
+
+  // Derive a stable agent name from the URL path (matches AIChatAgent routing)
+  const agentName = (() => {
+    const parts = window.location.pathname.split("/");
+    // e.g. /agents/ChatAgent/<name> -> last segment
+    const idx = parts.indexOf("agents");
+    return idx >= 0 && parts[idx + 2] ? parts[idx + 2] : "default";
+  })();
 
   const agent = useAgent({
     agent: "ChatAgent",
@@ -310,6 +505,26 @@ function Chat() {
 
   const isStreaming = status === "streaming" || status === "submitted";
 
+  // Auto-refresh sidebar when a flashcard is saved
+  const prevMessagesLen = useRef(0);
+  useEffect(() => {
+    if (messages.length !== prevMessagesLen.current) {
+      prevMessagesLen.current = messages.length;
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg) {
+        const hasSaveFlashcard = lastMsg.parts?.some(
+          (p: any) =>
+            p.type?.startsWith("tool") &&
+            p.toolName === "saveFlashcard" &&
+            p.state === "output-available"
+        );
+        if (hasSaveFlashcard) {
+          setFlashcardRefreshTrigger((n) => n + 1);
+        }
+      }
+    }
+  }, [messages]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -332,7 +547,9 @@ function Chat() {
   }, [input, isStreaming, sendMessage]);
 
   return (
-    <div className="flex flex-col h-screen bg-kumo-elevated">
+    <div className="flex h-screen bg-kumo-elevated overflow-hidden">
+      {/* Chat column */}
+      <div className="flex flex-col flex-1 min-w-0">
       {/* Header */}
       <header className="px-5 py-4 bg-kumo-base border-b border-kumo-line">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
@@ -736,6 +953,9 @@ function Chat() {
           </div>
         </form>
       </div>
+      </div>
+      {/* Study sidebar */}
+      <StudySidebar agentName={agentName} refreshTrigger={flashcardRefreshTrigger} />
     </div>
   );
 }
