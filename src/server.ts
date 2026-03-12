@@ -108,6 +108,29 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
           }
         }),
 
+        saveQuiz: tool({
+          description: "Save a question, the options and the answer for the user.",
+          inputSchema: z.object({
+            question: z.string().describe("The question to answer"),
+            options: z.string().array().describe("The options for the question"),
+            answer: z.string().describe("The answer to the questions")
+          }),
+          execute: async ({ question, options, answer }) => {
+            // 1. Get a reference to the Durable Object namespace
+            const id = this.env.QUIZ_DO.idFromName(this.name);
+            const ns = this.env.QUIZ_DO.get(id);
+
+            const quiz = await ns.addQuiz(question, options, answer);
+
+            console.log(quiz);
+          
+            return {
+              success: true,
+              message: `Quiz for '${question}' saved successfully (ID: ${quiz.id}).`
+            };
+          }
+        }),
+
         
 
 
@@ -223,6 +246,24 @@ export default {
       // GET — list all flashcards
       const flashcards = await stub.getFlashcards();
       return new Response(JSON.stringify(flashcards), { headers: cors });
+    }
+
+    if (url.pathname === "/api/quizzes") {
+      const cors = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
+      const agentName = url.searchParams.get("agent") ?? "default";
+      const id = env.QUIZ_DO.idFromName(agentName);
+      const stub = env.QUIZ_DO.get(id);
+
+      if (request.method === "DELETE") {
+        const cardId = url.searchParams.get("id");
+        if (!cardId) return new Response(JSON.stringify({ error: "Missing id" }), { status: 400, headers: cors });
+        await stub.deleteQuiz(cardId);
+        return new Response(JSON.stringify({ success: true }), { headers: cors });
+      }
+
+      // GET — list all quizzes
+      const quizzes = await stub.getQuizzes();
+      return new Response(JSON.stringify(quizzes), { headers: cors });
     }
 
     return (

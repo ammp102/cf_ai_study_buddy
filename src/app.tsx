@@ -200,6 +200,16 @@ interface Flashcard {
   createdAt: number;
 }
 
+// ── Quize types ───────────────────────────────────────────────────
+
+interface Quiz {
+  id: string;
+  question: string;
+  options: string[];
+  answer: string;
+  createdAt: number;
+}
+
 // ── Study Sidebar ─────────────────────────────────────────────────────
 
 function StudySidebar({
@@ -211,6 +221,7 @@ function StudySidebar({
 }) {
   const [activeTab, setActiveTab] = useState<"flashcards" | "quiz">("flashcards");
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [loading, setLoading] = useState(false);
   const [flipped, setFlipped] = useState<Record<string, boolean>>({});
 
@@ -237,9 +248,33 @@ function StudySidebar({
     }
   }, [agentName]);
 
+  const fetchQuizzes = useCallback(async () => {
+    if (!agentName) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/quizzes?agent=${encodeURIComponent(agentName)}`);
+      if (res.ok) {
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text) as Quiz[];
+          setQuizzes(data);
+        } catch {
+          console.error("Failed to parse quizzes JSON:", text.slice(0, 200));
+        }
+      } else {
+        console.error("Quizzes fetch failed:", res.status, await res.text());
+      }
+    } catch (e) {
+      console.error("Failed to fetch quizzes", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [agentName]);
+
   useEffect(() => {
     fetchFlashcards();
-  }, [fetchFlashcards, refreshTrigger]);
+    fetchQuizzes();
+  }, [fetchFlashcards, fetchQuizzes, refreshTrigger]);
 
   const deleteFlashcard = async (id: string) => {
     try {
@@ -249,6 +284,17 @@ function StudySidebar({
       setFlashcards((prev) => prev.filter((c) => c.id !== id));
     } catch (e) {
       console.error("Failed to delete flashcard", e);
+    }
+  };
+
+  const deleteQuiz = async (id: string) => {
+    try {
+      await fetch(`/api/quizzes?agent=${encodeURIComponent(agentName)}&id=${id}`, {
+        method: "DELETE"
+      });
+      setQuizzes((prev) => prev.filter((c) => c.id !== id));
+    } catch (e) {
+      console.error("Failed to delete quiz", e);
     }
   };
 
@@ -361,14 +407,64 @@ function StudySidebar({
         )}
 
         {activeTab === "quiz" && (
-          <div className="flex flex-col items-center justify-center py-10 px-4 text-center gap-3">
-            <ListChecksIcon size={28} className="text-kumo-inactive" />
-            <Text size="sm" bold>Quizzes coming soon</Text>
-            <Text size="xs" variant="secondary">
-              Ask the assistant to generate a quiz and it will appear here.
-            </Text>
+          <div className="p-3 space-y-2">
+            {loading && quizzes.length === 0 && (
+              <div className="flex items-center justify-center py-8 text-kumo-inactive">
+                <ArrowsClockwiseIcon size={16} className="animate-spin mr-2" />
+                <Text size="xs" variant="secondary">Loading...</Text>
+              </div>
+            )}
+            {!loading && quizzes.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-10 px-4 text-center gap-3">
+                <CardsIcon size={28} className="text-kumo-inactive" />
+                <Text size="xs" variant="secondary">
+                  No quizzes yet. Ask the assistant to generate questions!
+                </Text>
+              </div>
+            )}
+            {quizzes.map((card) => (
+              <div
+                key={card.id}
+                className="group relative rounded-xl border border-kumo-line bg-kumo-base overflow-hidden cursor-pointer hover:border-kumo-accent transition-colors"
+                onClick={() => toggleFlip(card.id)}
+              >
+                <button
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-kumo-elevated text-kumo-inactive hover:text-kumo-danger z-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteQuiz(card.id);
+                  }}
+                  aria-label="Delete quiz"
+                >
+                  <TrashIcon size={12} />
+                </button>
+
+                <div className="px-3 py-2.5">
+                  {!flipped[card.id] ? (
+                    <>
+                      <span className="block text-xs text-kumo-subtle uppercase tracking-wide font-semibold mb-1">Question</span>
+                      <Text size="sm" bold>{card.question}</Text>
+                      
+                      <span className="block text-xs text-kumo-subtle uppercase tracking-wide font-semibold mb-1">Options</span>
+                      <Text size="sm">{card.options}</Text>
+                      <span className="block text-xs text-kumo-subtle mt-1.5">Tap to reveal the answer</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="block text-xs text-kumo-subtle uppercase tracking-wide font-semibold mb-1">Question</span>
+                      <Text size="sm" bold>{card.question}</Text>
+                      <span className="block text-xs text-kumo-subtle uppercase tracking-wide font-semibold mb-1">Answer</span>
+                      <Text size="sm">{card.answer}</Text>
+                    </>
+                  )}
+                </div>
+
+                <div className={`h-0.5 w-full transition-colors ${flipped[card.id] ? "bg-kumo-success" : "bg-kumo-brand/30"}`} />
+              </div>
+            ))}
           </div>
         )}
+        
       </div>
     </div>
   );
@@ -427,7 +523,6 @@ function Chat() {
             });
           }
         } catch {
-          // Not JSON or not our event
         }
       },
       [toasts]
@@ -555,11 +650,11 @@ function Chat() {
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-semibold text-kumo-default">
-              <span className="mr-2">⛅</span>Agent Starter
+              <span className="mr-2">📚</span>Study Buddy
             </h1>
             <Badge variant="secondary">
               <ChatCircleDotsIcon size={12} weight="bold" className="mr-1" />
-              AI Chat
+              Study buddy
             </Badge>
           </div>
           <div className="flex items-center gap-3">
