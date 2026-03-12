@@ -30,16 +30,15 @@
 				"name": "ChatAgent"
 			},
 			{
-      		  "class_name": "FlashcardDO",
-      		  "name": "FLASHCARD_DO"          
-      		},
+				"class_name": "FlashcardDO",
+				"name": "FLASHCARD_DO"
+			},
 			{
-      		  "class_name": "QuizDO",
-      		  "name": "QUIZ_DO"          
-      		}
+				"class_name": "QuizDO",
+				"name": "QUIZ_DO"
+			}
 		]
 	},
-	
 	"migrations": [
 		{
 			"new_sqlite_classes": [
@@ -48,17 +47,23 @@
 			"tag": "v1",
 		},
 		{
-  		  "new_sqlite_classes": [
-			"FlashcardDO", 
-			"QuizDO"
+			"new_sqlite_classes": [
+				"FlashcardDO",
+				"QuizDO"
 			],
-  		  	"tag": "v2"
-  		}
+			"tag": "v2"
+		}
 	],
-
 	"observability": {
 		"enabled": true
-	}
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "study-buddy-db",
+			"database_id": "5dbf1cbb-1e72-4226-b197-7024ac21b47b"
+		}
+	]
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

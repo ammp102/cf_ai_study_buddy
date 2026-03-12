@@ -265,9 +265,71 @@ export default {
       return new Response(JSON.stringify(quizzes), { headers: cors });
     }
 
+    // ── Sessions REST API (D1 Database) ─────────────────────────────────
+    if (url.pathname === "/api/sessions") {
+      const cors = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
+
+      // GET — List all sessions (newest first)
+      if (request.method === "GET") {
+        const { results } = await env.DB.prepare(
+            "SELECT * FROM sessions ORDER BY created_at DESC"
+        ).all();
+        return new Response(JSON.stringify(results), { headers: cors });
+      }
+
+      // POST — Create a new session
+      if (request.method === "POST") {
+        const id = crypto.randomUUID(); // This is the immutable ID for the DOs
+        const title = "New Buddy";
+        const createdAt = Date.now();
+
+        await env.DB.prepare(
+            "INSERT INTO sessions (id, title, created_at) VALUES (?, ?, ?)"
+        ).bind(id, title, createdAt).run();
+
+        return new Response(JSON.stringify({ id, title, created_at: createdAt }), {
+          status: 201,
+          headers: cors
+        });
+      }
+    }
+
+    // Handle updates and deletes for specific sessions
+    if (url.pathname.startsWith("/api/sessions/")) {
+      const cors = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
+      const id = url.pathname.split("/").pop();
+
+      if (!id) return new Response(JSON.stringify({ error: "Missing ID" }), { status: 400, headers: cors });
+
+      // PATCH — Update the session title (Manual or Auto-rename)
+      if (request.method === "PATCH") {
+        const body = await request.json() as { title: string };
+        if (!body.title) {
+          return new Response(JSON.stringify({ error: "Missing title" }), { status: 400, headers: cors });
+        }
+
+        await env.DB.prepare(
+            "UPDATE sessions SET title = ? WHERE id = ?"
+        ).bind(body.title, id).run();
+
+        return new Response(JSON.stringify({ success: true }), { headers: cors });
+      }
+
+      // DELETE — Remove a session
+      if (request.method === "DELETE") {
+        await env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(id).run();
+
+        // Bonus: Later you can add logic here to wipe the specific ChatAgent, QuizDO, and FlashcardDO data!
+
+        return new Response(JSON.stringify({ success: true }), { headers: cors });
+      }
+    }
+
     return (
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })
     );
+
+
   }
 } satisfies ExportedHandler<Env>;

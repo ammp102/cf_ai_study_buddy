@@ -3,7 +3,6 @@ import { useAgent } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { isToolUIPart, getToolName } from "ai";
 import type { UIMessage } from "ai";
-import type { MCPServersState } from "agents";
 import {
   Button,
   Badge,
@@ -14,7 +13,6 @@ import {
 } from "@cloudflare/kumo";
 import { Toasty, useKumoToastManager } from "@cloudflare/kumo/components/toast";
 import { Streamdown } from "streamdown";
-import { Switch } from "@cloudflare/kumo";
 import {
   PaperPlaneRightIcon,
   StopIcon,
@@ -28,15 +26,10 @@ import {
   XCircleIcon,
   BrainIcon,
   CaretDownIcon,
-  BugIcon,
-  PlugsConnectedIcon,
   PlusIcon,
-  SignInIcon,
-  XIcon,
-  WrenchIcon,
   CardsIcon,
   ArrowsClockwiseIcon,
-  ListChecksIcon
+  ListChecksIcon, PencilSimpleIcon
 } from "@phosphor-icons/react";
 
 // ── Small components ──────────────────────────────────────────────────
@@ -200,7 +193,7 @@ interface Flashcard {
   createdAt: number;
 }
 
-// ── Quize types ───────────────────────────────────────────────────
+// ── Quiz types ───────────────────────────────────────────────────
 
 interface Quiz {
   id: string;
@@ -208,6 +201,143 @@ interface Quiz {
   options: string[];
   answer: string;
   createdAt: number;
+}
+
+// ── Session types ───────────────────────────────────────────────────
+interface Session {
+  id: string;
+  title: string;
+  created_at: number;
+}
+
+// ── Session Sidebar ───────────────────────────────────────────────────
+function SessionSidebar({ currentSessionId }: { currentSessionId: string }) {
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchSessions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/sessions");
+      if (res.ok) {
+        const data = (await res.json()) as Session[];
+        setSessions(data);
+
+        const searchParams = new URLSearchParams(window.location.search);
+        if (!searchParams.get("session")) {
+          if (data.length > 0) {
+            window.location.replace(`/?session=${data[0].id}`);
+          } else {
+            const createRes = await fetch("/api/sessions", { method: "POST" });
+            if (createRes.ok) {
+              const newSession = (await createRes.json()) as Session;
+              window.location.replace(`/?session=${newSession.id}`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch sessions", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  const createNewBuddy = async () => {
+    try {
+      const res = await fetch("/api/sessions", { method: "POST" });
+      if (res.ok) {
+        const newSession = (await res.json()) as Session;
+
+        window.location.href = `/?session=${newSession.id}`;
+      }
+    } catch (e) {
+      console.error("Failed to create session", e);
+    }
+  };
+
+  const renameSession = async (id: string, currentTitle: string) => {
+    // Keep it simple with a native browser prompt for now
+    const newTitle = window.prompt("Enter new session name:", currentTitle);
+
+    if (!newTitle || newTitle.trim() === "" || newTitle === currentTitle) {
+      return; // User canceled or didn't change anything
+    }
+
+    try {
+      const res = await fetch(`/api/sessions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle.trim() })
+      });
+
+      if (res.ok) {
+        fetchSessions();
+        window.dispatchEvent(new Event("buddy-renamed"));
+      }
+    } catch (e) {
+      console.error("Failed to rename session", e);
+    }
+  };
+
+  return (
+      <div className="flex flex-col h-full bg-kumo-base border-r border-kumo-line w-64 shrink-0">
+        <div className="px-4 py-4 border-b border-kumo-line">
+          <Button
+              variant="primary"
+              className="w-full justify-center"
+              icon={<PlusIcon size={16} />}
+              onClick={createNewBuddy}
+          >
+            New Buddy
+          </Button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          {loading && sessions.length === 0 ? (
+              <div className="flex items-center justify-center py-4 text-kumo-inactive">
+                <ArrowsClockwiseIcon size={16} className="animate-spin mr-2" />
+                <Text size="xs">Loading...</Text>
+              </div>
+          ) : sessions.length === 0 ? (
+              <div className="text-center py-4 text-kumo-subtle text-xs">
+                No history yet.
+              </div>
+          ) : (
+              sessions.map((session) => (
+                  <div
+                      key={session.id}
+                      className={`flex items-center justify-between group px-2 py-1.5 rounded-lg text-sm transition-colors ${
+                          currentSessionId === session.id
+                              ? "bg-kumo-elevated text-kumo-default font-semibold shadow-sm"
+                              : "text-kumo-secondary hover:bg-kumo-elevated hover:text-kumo-default"
+                      }`}
+                  >
+                    <a
+                        href={`/?session=${session.id}`}
+                        className="truncate flex-1 px-1 py-1"
+                    >
+                      {session.title}
+                    </a>
+
+                    <button
+                        onClick={() => renameSession(session.id, session.title)}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 ml-1 rounded hover:bg-kumo-base text-kumo-inactive hover:text-kumo-default transition-all"
+                        title="Rename buddy"
+                    >
+                      <PencilSimpleIcon size={14} />
+
+                    </button>
+                  </div>
+              ))
+          )}
+        </div>
+      </div>
+  );
 }
 
 // ── Study Sidebar ─────────────────────────────────────────────────────
@@ -487,42 +617,54 @@ function StudySidebar({
 function Chat() {
   const [connected, setConnected] = useState(false);
   const [input, setInput] = useState("");
-  const [showDebug, setShowDebug] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const toasts = useKumoToastManager();
-  const [mcpState, setMcpState] = useState<MCPServersState>({
-    prompts: [],
-    resources: [],
-    servers: {},
-    tools: []
-  });
-  const [showMcpPanel, setShowMcpPanel] = useState(false);
-  const [mcpName, setMcpName] = useState("");
-  const [mcpUrl, setMcpUrl] = useState("");
-  const [isAddingServer, setIsAddingServer] = useState(false);
-  const mcpPanelRef = useRef<HTMLDivElement>(null);
   const [flashcardRefreshTrigger, setFlashcardRefreshTrigger] = useState(0);
 
-  // Derive a stable agent name from the URL path (matches AIChatAgent routing)
+  // Derive a stable agent name from the URL query parameter
   const agentName = (() => {
-    const parts = window.location.pathname.split("/");
-    // e.g. /agents/ChatAgent/<name> -> last segment
-    const idx = parts.indexOf("agents");
-    return idx >= 0 && parts[idx + 2] ? parts[idx + 2] : "default";
+    const searchParams = new URLSearchParams(window.location.search);
+    return searchParams.get("session") || "default";
   })();
+
+  // Add this near your other state variables
+  const [sessionTitle, setSessionTitle] = useState("New Buddy");
+
+  // Add this useEffect to grab the title whenever the agentName changes
+  useEffect(() => {
+    if (!agentName || agentName === "default") return;
+
+    const fetchCurrentTitle = async () => {
+      try {
+        const res = await fetch("/api/sessions");
+        if (res.ok) {
+          const sessions = (await res.json()) as Session[];
+          // Find the session that matches our current URL ID
+          const current = sessions.find((s) => s.id === agentName);
+          if (current) {
+            setSessionTitle(current.title);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load session title", e);
+      }
+    };
+
+    fetchCurrentTitle();
+    window.addEventListener("buddy-renamed", fetchCurrentTitle);
+    return () => window.removeEventListener("buddy-renamed", fetchCurrentTitle);
+  }, [agentName]);
 
   const agent = useAgent({
     agent: "ChatAgent",
+    name: agentName,
     onOpen: useCallback(() => setConnected(true), []),
     onClose: useCallback(() => setConnected(false), []),
     onError: useCallback(
       (error: Event) => console.error("WebSocket error:", error),
       []
     ),
-    onMcpUpdate: useCallback((state: MCPServersState) => {
-      setMcpState(state);
-    }, []),
     onMessage: useCallback(
       (message: MessageEvent) => {
         try {
@@ -540,50 +682,6 @@ function Chat() {
       [toasts]
     )
   });
-
-  // Close MCP panel when clicking outside
-  useEffect(() => {
-    if (!showMcpPanel) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        mcpPanelRef.current &&
-        !mcpPanelRef.current.contains(e.target as Node)
-      ) {
-        setShowMcpPanel(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showMcpPanel]);
-
-  const handleAddServer = async () => {
-    if (!mcpName.trim() || !mcpUrl.trim()) return;
-    setIsAddingServer(true);
-    try {
-      await agent.call("addServer", [
-        mcpName.trim(),
-        mcpUrl.trim(),
-        window.location.origin
-      ]);
-      setMcpName("");
-      setMcpUrl("");
-    } catch (e) {
-      console.error("Failed to add MCP server:", e);
-    } finally {
-      setIsAddingServer(false);
-    }
-  };
-
-  const handleRemoveServer = async (serverId: string) => {
-    try {
-      await agent.call("removeServer", [serverId]);
-    } catch (e) {
-      console.error("Failed to remove MCP server:", e);
-    }
-  };
-
-  const serverEntries = Object.entries(mcpState.servers);
-  const mcpToolCount = mcpState.tools.length;
 
   const {
     messages,
@@ -655,6 +753,9 @@ function Chat() {
 
   return (
     <div className="flex h-screen bg-kumo-elevated overflow-hidden">
+
+      <SessionSidebar currentSessionId={agentName} />
+
       {/* Chat column */}
       <div className="flex flex-col flex-1 min-w-0">
       {/* Header */}
@@ -666,7 +767,7 @@ function Chat() {
             </h1>
             <Badge variant="secondary">
               <ChatCircleDotsIcon size={12} weight="bold" className="mr-1" />
-              Study buddy
+              {sessionTitle}
             </Badge>
           </div>
           <div className="flex items-center gap-3">
@@ -680,19 +781,6 @@ function Chat() {
                 {connected ? "Connected" : "Disconnected"}
               </Text>
             </div>
-
-            {
-              /* Debug mode
-            //<div className="flex items-center gap-1.5">
-            //  <BugIcon size={14} className="text-kumo-inactive" />
-            //  <Switch
-            //    checked={showDebug}
-            //    onCheckedChange={setShowDebug}
-            //    size="sm"
-            //    aria-label="Toggle debug mode"
-            //  />
-            //</div> */
-            }
             <ThemeToggle />
 
             <Button
@@ -748,11 +836,6 @@ function Chat() {
 
             return (
               <div key={message.id} className="space-y-2">
-                {showDebug && (
-                  <pre className="text-[11px] text-kumo-subtle bg-kumo-control rounded-lg p-3 overflow-auto max-h-64">
-                    {JSON.stringify(message, null, 2)}
-                  </pre>
-                )}
 
                 {/* Tool parts */}
                 {message.parts.filter(isToolUIPart).map((part) => (
