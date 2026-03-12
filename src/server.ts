@@ -71,7 +71,9 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
     const result = streamText({
       model: workersai("@cf/zai-org/glm-4.7-flash"),
       system: `You are a study assistant. Your goal is to summarize content, generate quiz questions and flashcards, and set reminders to stop or start studying.
-      IMPORTANT: only use tools if the user requests to schedule a message or handling quizes.
+      IMPORTANT: only use tools if the user requests to schedule a message, create a quiz or create a flashcard.
+      IMPORTANT: If the user asks to generate flashcards from quizzes DO NOT generate quizzes again, simply use the question and correct answer.
+      IMPORTANT: If the user asks to generate quizzes from flashcards DO NOT generate flashcards again, simply use the term and definition and generate 3 more options.
 
       ${getSchedulePrompt({ date: new Date() })}
 
@@ -112,7 +114,7 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
           description: "Save a question, the options and the answer for the user.",
           inputSchema: z.object({
             question: z.string().describe("The question to answer"),
-            options: z.string().array().describe("The options for the question"),
+            options: z.string().array().describe("The options for the question. IMPORTANT: This MUST be a valid JSON array of strings, for example: ['A) Option 1', 'B) Option 2', 'C) Option 3', 'D) Option 4']\")"),
             answer: z.string().describe("The answer to the questions")
           }),
           execute: async ({ question, options, answer }) => {
@@ -130,9 +132,6 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
             };
           }
         }),
-
-        
-
 
         scheduleTask: tool({
           description:
