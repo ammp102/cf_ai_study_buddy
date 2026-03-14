@@ -22,8 +22,6 @@ import {
   CircleIcon,
   MoonIcon,
   SunIcon,
-  CheckCircleIcon,
-  XCircleIcon,
   BrainIcon,
   CaretDownIcon,
   PlusIcon,
@@ -63,7 +61,6 @@ function ThemeToggle() {
 
 function ToolPartView({
   part,
-  addToolApprovalResponse
 }: {
   part: UIMessage["parts"][number];
   addToolApprovalResponse: (response: {
@@ -90,75 +87,6 @@ function ToolPartView({
             <Text size="xs" variant="secondary">
               {JSON.stringify(part.output, null, 2)}
             </Text>
-          </div>
-        </Surface>
-      </div>
-    );
-  }
-
-  // Needs approval
-  if ("approval" in part && part.state === "approval-requested") {
-    const approvalId = (part.approval as { id?: string })?.id;
-    return (
-      <div className="flex justify-start">
-        <Surface className="max-w-[85%] px-4 py-3 rounded-xl ring-2 ring-kumo-warning">
-          <div className="flex items-center gap-2 mb-2">
-            <GearIcon size={14} className="text-kumo-warning" />
-            <Text size="sm" bold>
-              Approval needed: {toolName}
-            </Text>
-          </div>
-          <div className="font-mono mb-3">
-            <Text size="xs" variant="secondary">
-              {JSON.stringify(part.input, null, 2)}
-            </Text>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<CheckCircleIcon size={14} />}
-              onClick={() => {
-                if (approvalId) {
-                  addToolApprovalResponse({ id: approvalId, approved: true });
-                }
-              }}
-            >
-              Approve
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<XCircleIcon size={14} />}
-              onClick={() => {
-                if (approvalId) {
-                  addToolApprovalResponse({ id: approvalId, approved: false });
-                }
-              }}
-            >
-              Reject
-            </Button>
-          </div>
-        </Surface>
-      </div>
-    );
-  }
-
-  // Rejected / denied
-  if (
-    part.state === "output-denied" ||
-    ("approval" in part &&
-      (part.approval as { approved?: boolean })?.approved === false)
-  ) {
-    return (
-      <div className="flex justify-start">
-        <Surface className="max-w-[85%] px-4 py-2.5 rounded-xl ring ring-kumo-line">
-          <div className="flex items-center gap-2">
-            <XCircleIcon size={14} className="text-kumo-danger" />
-            <Text size="xs" variant="secondary" bold>
-              {toolName}
-            </Text>
-            <Badge variant="secondary">Rejected</Badge>
           </div>
         </Surface>
       </div>
@@ -620,7 +548,7 @@ function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const toasts = useKumoToastManager();
-  const [flashcardRefreshTrigger, setFlashcardRefreshTrigger] = useState(0);
+  const [RefreshTrigger, setRefreshTrigger] = useState(0);
 
   // Derive a stable agent name from the URL query parameter
   const agentName = (() => {
@@ -676,6 +604,12 @@ function Chat() {
               timeout: 0
             });
           }
+          if (data.type === "quiz_created") {
+            setRefreshTrigger((n) => n + 1);
+          }
+          if (data.type === "flashcard_created") {
+            setRefreshTrigger((n) => n + 1);
+          }
         } catch {
         }
       },
@@ -724,7 +658,7 @@ function Chat() {
             p.state === "output-available"
         );
         if (hasSaveFlashcard) {
-          setFlashcardRefreshTrigger((n) => n + 1);
+          setRefreshTrigger((n) => n + 1);
         }
       }
     }
@@ -985,7 +919,7 @@ function Chat() {
       </div>
       </div>
       {/* Study sidebar */}
-      <StudySidebar agentName={agentName} refreshTrigger={flashcardRefreshTrigger} />
+      <StudySidebar agentName={agentName} refreshTrigger={RefreshTrigger} />
     </div>
   );
 }

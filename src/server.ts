@@ -1,5 +1,5 @@
 import { createWorkersAI } from "workers-ai-provider";
-import { routeAgentRequest, callable, type Schedule } from "agents";
+import { routeAgentRequest, type Schedule } from "agents";
 import { getSchedulePrompt, scheduleSchema } from "agents/schedule";
 import { AIChatAgent, type OnChatMessageOptions } from "@cloudflare/ai-chat";
 import {
@@ -19,41 +19,6 @@ interface IState {
 }
 
 export class ChatAgent extends AIChatAgent<Env, IState> {
-  // Wait for MCP connections to restore after hibernation before processing messages
-  waitForMcpConnections = true;
-
-  onStart() {
-    // Configure OAuth popup behavior for MCP servers that require authentication
-    this.mcp.configureOAuthCallback({
-      customHandler: (result) => {
-        if (result.authSuccess) {
-          return new Response("<script>window.close();</script>", {
-            headers: { "content-type": "text/html" },
-            status: 200
-          });
-        }
-        return new Response(
-          `Authentication Failed: ${result.authError || "Unknown error"}`,
-          { headers: { "content-type": "text/plain" }, status: 400 }
-        );
-      }
-    });
-
-  }
-
-  @callable()
-  async addServer(name: string, url: string, host: string) {
-    return await this.addMcpServer(name, url, { callbackHost: host });
-  }
-
-  @callable()
-  async removeServer(serverId: string) {
-    await this.removeMcpServer(serverId);
-  }
-
-  getName() {
-    return this.state?.name || this.name;
-  }
 
   updateName() {
     if (!this.state?.name && this.name) {
@@ -63,7 +28,6 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
 
   
   async onChatMessage(_onFinish: unknown, options?: OnChatMessageOptions) {
-    const mcpTools = this.mcp.getAITools();
     const workersai = createWorkersAI({ binding: this.env.AI });
 
     this.updateName()
@@ -85,8 +49,6 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
         toolCalls: "before-last-2-messages"
       }),
       tools: {
-        // MCP tools from connected servers
-        ...mcpTools,
 
         saveFlashcard: tool({
           description: "Save a term and definition as a flashcard for the user.",
@@ -101,7 +63,8 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
 
             const flashcard = await ns.addFlashcard(term, definition);
 
-            console.log(flashcard);
+            //console.log(flashcard);
+            this.broadcast(JSON.stringify({type: "flashcard_created"}));
           
             return {
               success: true,
@@ -124,7 +87,8 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
 
             const quiz = await ns.addQuiz(question, options, answer);
 
-            console.log(quiz);
+            //console.log(quiz);
+            this.broadcast(JSON.stringify({type: "quiz_created"}));
           
             return {
               success: true,
@@ -191,10 +155,8 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
   }
 
   async executeTask(description: string, _task: Schedule<string>) {
-    // Do the actual work here (send email, call API, etc.)
     console.log(`Executing scheduled task: ${description}`);
 
-    // Determine the custom message based on description keywords
   let notificationMessage: string;
   const lowerDesc = description.toLowerCase();
   if (lowerDesc.includes('break') || lowerDesc.includes('rest')) {
@@ -215,9 +177,6 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
       })
     );
   }
-
-
-
 }
 
 
@@ -226,9 +185,6 @@ export default {
   async fetch(request: Request, env: Env) {
     const url = new URL(request.url);
 
-    // ── Flashcard REST API ──────────────────────────────────────────────
-    // Routes: GET /api/flashcards?agent=<name>
-    //         DELETE /api/flashcards?agent=<name>&id=<cardId>
     if (url.pathname === "/api/flashcards") {
       const cors = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
       const agentName = url.searchParams.get("agent") ?? "default";
@@ -242,7 +198,6 @@ export default {
         return new Response(JSON.stringify({ success: true }), { headers: cors });
       }
 
-      // GET — list all flashcards
       const flashcards = await stub.getFlashcards();
       return new Response(JSON.stringify(flashcards), { headers: cors });
     }
@@ -260,12 +215,10 @@ export default {
         return new Response(JSON.stringify({ success: true }), { headers: cors });
       }
 
-      // GET — list all quizzes
       const quizzes = await stub.getQuizzes();
       return new Response(JSON.stringify(quizzes), { headers: cors });
     }
 
-    // ── Sessions REST API (D1 Database) ─────────────────────────────────
     if (url.pathname === "/api/sessions") {
       const cors = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
 
@@ -277,7 +230,6 @@ export default {
         return new Response(JSON.stringify(results), { headers: cors });
       }
 
-      // POST — Create a new session
       if (request.method === "POST") {
         const id = crypto.randomUUID(); // This is the immutable ID for the DOs
         const title = "New Buddy";
@@ -294,14 +246,12 @@ export default {
       }
     }
 
-    // Handle updates and deletes for specific sessions
     if (url.pathname.startsWith("/api/sessions/")) {
       const cors = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
       const id = url.pathname.split("/").pop();
 
       if (!id) return new Response(JSON.stringify({ error: "Missing ID" }), { status: 400, headers: cors });
 
-      // PATCH — Update the session title (Manual or Auto-rename)
       if (request.method === "PATCH") {
         const body = await request.json() as { title: string };
         if (!body.title) {
@@ -311,15 +261,6 @@ export default {
         await env.DB.prepare(
             "UPDATE sessions SET title = ? WHERE id = ?"
         ).bind(body.title, id).run();
-
-        return new Response(JSON.stringify({ success: true }), { headers: cors });
-      }
-
-      // DELETE — Remove a session
-      if (request.method === "DELETE") {
-        await env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(id).run();
-
-        // Bonus: Later you can add logic here to wipe the specific ChatAgent, QuizDO, and FlashcardDO data!
 
         return new Response(JSON.stringify({ success: true }), { headers: cors });
       }
