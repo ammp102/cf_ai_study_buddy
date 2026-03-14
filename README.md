@@ -19,7 +19,11 @@ Study Buddy helps students learn, memorize and plan their work through a convers
 - Workers AI — LLM inference via @cf/zai-org/glm-4.7-flash
 - React — component-based frontend with real-time sidebar updates
 
-## Setup
+## Available at
+
+https://cf-ai-andre-pinho.a-martimpinho.workers.dev/?session=919bd17f-d654-43ed-81d8-b2b0922a68d1
+
+## Local setup
 
 ```bash
 npm install
