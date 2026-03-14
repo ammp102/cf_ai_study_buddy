@@ -38,7 +38,7 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
       IMPORTANT: only use tools if the user requests to schedule a message, create a quiz or create a flashcard.
       IMPORTANT: If the user asks to generate flashcards from quizzes DO NOT generate quizzes again, simply use the question and correct answer.
       IMPORTANT: If the user asks to generate quizzes from flashcards DO NOT generate flashcards again, simply use the term and definition and generate 3 more options.
-
+      IMPORTANT: Never wrap your responses in markdown code fences. Respond with plain markdown only.
       ${getSchedulePrompt({ date: new Date() })}
 
       If the user asks to schedule a task, use the schedule tool to schedule the task.`,
