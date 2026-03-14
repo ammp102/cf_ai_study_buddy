@@ -115,7 +115,7 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
                     : null;
             if (!input) return "Invalid schedule type";
             try {
-              this.schedule(input, "executeTask", description);
+              await this.schedule(input, "executeTask", description);
               return `Task scheduled: "${description}" (${when.type}: ${input})`;
             } catch (error) {
               return `Error scheduling task: ${error}`;
@@ -139,7 +139,7 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
           }),
           execute: async ({ taskId }) => {
             try {
-              this.cancelSchedule(taskId);
+              await this.cancelSchedule(taskId);
               return `Task ${taskId} cancelled.`;
             } catch (error) {
               return `Error cancelling task: ${error}`;
@@ -154,7 +154,7 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
     return result.toUIMessageStreamResponse();
   }
 
-  async executeTask(description: string, _task: Schedule<string>) {
+  async executeTask(description: string, _task: Schedule) {
     console.log(`Executing scheduled task: ${description}`);
 
   let notificationMessage: string;
@@ -167,7 +167,7 @@ export class ChatAgent extends AIChatAgent<Env, IState> {
     notificationMessage = `⏰ Reminder: ${description}`;
   }
 
-  
+
   // Broadcast with custom message
     this.broadcast(
       JSON.stringify({

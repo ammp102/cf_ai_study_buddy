@@ -1,13 +1,28 @@
 # CF_AI_STUDY_BUDDY
 
-## Summary
+An AI-powered study assistant built on Cloudflare's edge infrastructure, developed as part of my Cloudflare internship application.
 
-This project was developed as part of my application to summer internships at Cloudflare. <br>
-It consists of an AI agent designed to help students learn, comprehend and memorize any topic and program their work.
-This can be done by inquiring the agent on the topic/subject, asking it to generate flashcards and quizzes or scheduling breaks and starts.
+## What it does
+Study Buddy helps students learn, memorize and plan their work through a conversational AI agent. Users can:
 
-## Implementation
+- Ask the agent to explain any topic
+- Generate and save flashcards and quizzes that persist across sessions
+- Schedule reminders to start or stop studying
+- Maintain multiple independent sessions, each with their own conversation history, flashcards and quizzes
 
-Cloudflare agents starter was the base for this project. It was further expanded by completely shifting the purpose of the agent to a study dedicated one. It maintains the ability to use tools, scheduling ones were kept, the other default tools were removed. <br> 
-Two new tools were added, responsible for saving quizzes and flashcards as durable objects, this allowed to tackle two different checkpoints at once, due to time limitations and increasing the complexity of the work. <br>
-Changes were also made to the frontend that now includes a tab for the generated quizzes and flashcards, it is dinamic and allows for the answers and definitions to be shown only when desired. This provides another layer of interaction with durable objects.
+## Technical stack
+
+- Cloudflare Workers — serverless backend and agent runtime
+- Cloudflare Agents — stateful AI agent with WebSocket-based streaming
+- Durable Objects — per-session flashcard and quiz storage (FlashcardDO, QuizDO)
+- D1 — relational session management, allowing named and renameable conversations
+- Workers AI — LLM inference via @cf/zai-org/glm-4.7-flash
+- React — component-based frontend with real-time sidebar updates
+
+## Setup
+
+```bash
+npm install
+npx wrangler d1 execute study-buddy-db --local --file=schema.sql
+npm run dev
+``` 
